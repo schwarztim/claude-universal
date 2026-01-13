@@ -122,7 +122,7 @@ def test_model(endpoint: str, api_key: str, model: str) -> tuple[bool, str]:
             json={
                 "model": model,
                 "messages": [{"role": "user", "content": "Say OK"}],
-                "max_tokens": 5
+                "max_completion_tokens": 5
             },
             timeout=30.0
         )
