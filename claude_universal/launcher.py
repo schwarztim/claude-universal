@@ -216,6 +216,24 @@ def main(args: Optional[list[str]] = None) -> int:
         return 0
 
     if "--update" in args:
+        # Check for running sessions
+        import psutil
+        current_pid = os.getpid()
+        running_count = 0
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                if proc.info['pid'] != current_pid and proc.info['cmdline']:
+                    cmdline = ' '.join(proc.info['cmdline'])
+                    if 'claude-universal' in cmdline and '--update' not in cmdline:
+                        running_count += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        if running_count > 0:
+            print(f"\033[38;5;9m✗ Error: {running_count} claude-universal session(s) still running.\033[0m")
+            print("Please close all sessions before updating.")
+            return 1
+
         print("Updating claude-universal from GitHub...")
 
         # Try pipx first, fall back to pip

@@ -121,10 +121,10 @@ def build_openai_request(claude_request: dict) -> dict:
         "stream": claude_request.get("stream", False),
     }
 
-    # Handle max_tokens - cap at 128K for GPT-5.2
-    max_tokens = claude_request.get("max_tokens", 16384)
-    # Cap at 128000 (GPT-5.2's max output tokens)
-    max_tokens = min(max_tokens, 128000)
+    # Handle max_tokens - use 128K for GPT-5.2
+    max_tokens = claude_request.get("max_tokens", 128000)
+    # Always use at least 64k, max 128k (GPT-5.2's limits)
+    max_tokens = max(64000, min(max_tokens, 128000))
     openai_request["max_completion_tokens"] = max_tokens
 
     # Handle temperature
@@ -198,11 +198,14 @@ def convert_response(openai_response: dict, model: str) -> dict:
 
 async def stream_response(openai_stream: AsyncGenerator, model: str) -> AsyncGenerator[str, None]:
     """Convert OpenAI streaming response to Claude SSE format."""
+    import asyncio
+
     message_id = f"msg_{int(time.time())}"
     input_tokens = 0
     output_tokens = 0
     content_blocks = []
     current_text = ""
+    last_chunk_time = time.time()
 
     # Send message_start
     yield f"event: message_start\ndata: {json.dumps({'type': 'message_start', 'message': {'id': message_id, 'type': 'message', 'role': 'assistant', 'content': [], 'model': model, 'stop_reason': None, 'stop_sequence': None, 'usage': {'input_tokens': 0, 'output_tokens': 0}}})}\n\n"
@@ -211,6 +214,7 @@ async def stream_response(openai_stream: AsyncGenerator, model: str) -> AsyncGen
     yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': ''}})}\n\n"
 
     async for chunk in openai_stream:
+        last_chunk_time = time.time()
         if chunk.startswith("data: "):
             data_str = chunk[6:].strip()
             if data_str == "[DONE]":
