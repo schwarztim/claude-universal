@@ -304,7 +304,9 @@ async def messages(request: Request):
     if openai_request.get("stream"):
         # Streaming response - create generator that manages its own client
         async def generate_stream():
-            client = httpx.AsyncClient(timeout=120.0)
+            # Use longer timeout for large requests - 10 minutes
+            timeout = httpx.Timeout(600.0, connect=10.0)
+            client = httpx.AsyncClient(timeout=timeout)
             try:
                 async with client.stream("POST", url, json=openai_request, headers=headers) as response:
                     if response.status_code != 200:
@@ -322,7 +324,9 @@ async def messages(request: Request):
         )
     else:
         # Non-streaming response
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        # Use longer timeout for large requests - 10 minutes
+        timeout = httpx.Timeout(600.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, json=openai_request, headers=headers)
 
             if response.status_code != 200:
