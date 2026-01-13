@@ -299,22 +299,34 @@ async def messages(request: Request):
     headers = get_headers()
 
     # Log the request
-    print(f"[PROXY] {original_model} -> {mapped_model} @ {url}")
+    max_tokens_requested = openai_request.get("max_completion_tokens", 0)
+    print(f"[PROXY] {original_model} -> {mapped_model} @ {url} (max_tokens={max_tokens_requested})")
 
     if openai_request.get("stream"):
         # Streaming response - create generator that manages its own client
         async def generate_stream():
-            # Use longer timeout for large requests - 10 minutes
-            timeout = httpx.Timeout(600.0, connect=10.0)
+            # 5 minute timeout for large requests
+            timeout = httpx.Timeout(300.0, connect=10.0)
             client = httpx.AsyncClient(timeout=timeout)
             try:
+                print(f"[PROXY] Sending request to Azure...")
                 async with client.stream("POST", url, json=openai_request, headers=headers) as response:
                     if response.status_code != 200:
                         error_text = await response.aread()
+                        print(f"[PROXY] Error response: {response.status_code}")
                         raise HTTPException(status_code=response.status_code, detail=error_text.decode())
 
+                    print(f"[PROXY] Receiving stream from Azure...")
+                    chunk_count = 0
                     async for line in response.aiter_lines():
+                        chunk_count += 1
+                        if chunk_count % 100 == 0:
+                            print(f"[PROXY] Received {chunk_count} chunks...")
                         yield line + "\n"
+                    print(f"[PROXY] Stream complete. Total chunks: {chunk_count}")
+            except Exception as e:
+                print(f"[PROXY] Error during streaming: {e}")
+                raise
             finally:
                 await client.aclose()
 
@@ -324,17 +336,21 @@ async def messages(request: Request):
         )
     else:
         # Non-streaming response
-        # Use longer timeout for large requests - 10 minutes
-        timeout = httpx.Timeout(600.0, connect=10.0)
+        # 5 minute timeout for large requests
+        timeout = httpx.Timeout(300.0, connect=10.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
+            print(f"[PROXY] Sending non-streaming request to Azure...")
             response = await client.post(url, json=openai_request, headers=headers)
 
             if response.status_code != 200:
+                print(f"[PROXY] Error response: {response.status_code}")
                 raise HTTPException(status_code=response.status_code, detail=response.text)
 
+            print(f"[PROXY] Received response, converting format...")
             openai_response = response.json()
             claude_response = convert_response(openai_response, original_model)
 
+            print(f"[PROXY] Response complete")
             return JSONResponse(content=claude_response)
 
 
