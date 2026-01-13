@@ -22,7 +22,7 @@ def masked_input(prompt_text: str, default: str = "") -> str:
         console.print(f" [dim]\\[{'*' * min(len(default), 8)}...][/dim]", end="")
     console.print(": ", end="")
 
-    # Use getpass for hidden input, but we'll show asterisks manually
+    # Try to use raw terminal mode for asterisk feedback (Unix only)
     try:
         import sys
         import tty
@@ -54,8 +54,8 @@ def masked_input(prompt_text: str, default: str = "") -> str:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
         return password if password else default
-    except (ImportError, termios.error):
-        # Fallback for Windows or non-TTY
+    except Exception:
+        # Fallback for Windows or non-TTY - use getpass (no visual feedback)
         value = getpass.getpass("")
         return value if value else default
 
