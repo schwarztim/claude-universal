@@ -165,14 +165,19 @@ def main(args: Optional[list[str]] = None) -> int:
 
     if "--update" in args:
         print("Updating claude-universal from GitHub...")
-        result = subprocess.run(
-            ["pipx", "upgrade", "claude-universal", "--pip-args=--upgrade"],
-            capture_output=False
-        )
-        if result.returncode == 0:
-            # Also try to reinstall from git if pipx upgrade doesn't find updates
+
+        # Try pipx first, fall back to pip
+        import shutil
+        if shutil.which("pipx"):
+            print("Using pipx...")
             result = subprocess.run(
                 ["pipx", "install", "--force", "git+https://github.com/schwarztim/claude-universal.git"],
+                capture_output=False
+            )
+        else:
+            print("Using pip...")
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--force-reinstall", "git+https://github.com/schwarztim/claude-universal.git"],
                 capture_output=False
             )
         return result.returncode
