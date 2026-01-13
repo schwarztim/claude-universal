@@ -28,7 +28,7 @@ def find_claude_binary() -> Optional[str]:
     return shutil.which("claude")
 
 
-def start_proxy(port: int) -> subprocess.Popen:
+def start_proxy(port: int, verbose: bool = False) -> subprocess.Popen:
     """Start the embedded proxy server."""
     # Get the path to our proxy module
     proxy_module = Path(__file__).parent / "proxy.py"
@@ -61,7 +61,15 @@ def start_proxy(port: int) -> subprocess.Popen:
     # Proxy settings
     env["PORT"] = str(port)
     env["HOST"] = "127.0.0.1"
-    env["LOG_LEVEL"] = config.proxy.log_level
+    env["LOG_LEVEL"] = "DEBUG" if verbose else config.proxy.log_level
+
+    # Output handling - show logs if verbose, otherwise suppress
+    if verbose:
+        stdout = None  # Inherit from parent (shows in terminal)
+        stderr = None
+    else:
+        stdout = subprocess.PIPE
+        stderr = subprocess.PIPE
 
     # Start proxy
     if sys.platform == "win32":
@@ -69,8 +77,8 @@ def start_proxy(port: int) -> subprocess.Popen:
         proc = subprocess.Popen(
             [sys.executable, str(proxy_module)],
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=stdout,
+            stderr=stderr,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
         )
     else:
@@ -78,8 +86,8 @@ def start_proxy(port: int) -> subprocess.Popen:
         proc = subprocess.Popen(
             [sys.executable, str(proxy_module)],
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=stdout,
+            stderr=stderr,
             start_new_session=True,
         )
 
@@ -177,6 +185,7 @@ def main(args: Optional[list[str]] = None) -> int:
         print("Options:")
         print("  --setup, --reconfigure  Run the setup wizard")
         print("  --update               Update to latest version from GitHub")
+        print("  --verbose              Show proxy request logs")
         print("  --version              Show version")
         print("  --help                 Show this help")
         print()
@@ -184,6 +193,11 @@ def main(args: Optional[list[str]] = None) -> int:
         print()
         print("Configuration: ~/.claude-universal/config.json")
         return 0
+
+    # Check for verbose flag
+    verbose = "--verbose" in args
+    if verbose:
+        args = [a for a in args if a != "--verbose"]
 
     # Check for configuration
     if not config_exists():
@@ -218,7 +232,7 @@ def main(args: Optional[list[str]] = None) -> int:
 
     # Start proxy
     print(f"Starting proxy on port {port}...")
-    proxy_proc = start_proxy(port)
+    proxy_proc = start_proxy(port, verbose=verbose)
 
     # Register cleanup
     atexit.register(cleanup_proxy, proxy_proc)
