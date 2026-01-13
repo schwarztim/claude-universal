@@ -2,6 +2,7 @@
 
 import atexit
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -11,6 +12,31 @@ from pathlib import Path
 from typing import Optional
 
 from .config import config_exists, load_config
+
+
+# Claude credentials file location
+CLAUDE_CREDENTIALS = Path.home() / ".claude" / ".credentials.json"
+CLAUDE_CREDENTIALS_BACKUP = Path.home() / ".claude" / ".credentials.json.universal-backup"
+
+
+def hide_claude_credentials() -> bool:
+    """Temporarily hide Claude credentials to avoid auth conflict."""
+    if CLAUDE_CREDENTIALS.exists():
+        try:
+            shutil.move(str(CLAUDE_CREDENTIALS), str(CLAUDE_CREDENTIALS_BACKUP))
+            return True
+        except Exception:
+            pass
+    return False
+
+
+def restore_claude_credentials() -> None:
+    """Restore Claude credentials after session ends."""
+    if CLAUDE_CREDENTIALS_BACKUP.exists():
+        try:
+            shutil.move(str(CLAUDE_CREDENTIALS_BACKUP), str(CLAUDE_CREDENTIALS))
+        except Exception:
+            pass
 
 
 def find_free_port() -> int:
@@ -228,6 +254,11 @@ def main(args: Optional[list[str]] = None) -> int:
         cleanup_proxy(proxy_proc)
         return 1
 
+    # Temporarily hide claude.ai credentials to avoid auth conflict
+    credentials_hidden = hide_claude_credentials()
+    if credentials_hidden:
+        atexit.register(restore_claude_credentials)
+
     print(f"Proxy ready. Launching Claude Code...")
     print()
 
@@ -236,6 +267,8 @@ def main(args: Optional[list[str]] = None) -> int:
         return launch_claude(args, port)
     finally:
         cleanup_proxy(proxy_proc)
+        if credentials_hidden:
+            restore_claude_credentials()
 
 
 if __name__ == "__main__":
