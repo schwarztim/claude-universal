@@ -230,19 +230,8 @@ def main(args: Optional[list[str]] = None) -> int:
     # Find free port for proxy
     port = find_free_port()
 
-    # Show stylized Q logo (QVC style)
-    print("""
-\033[38;5;39m       ████████╗
-     ██╔══════██╗
-    ██╔╝      ╚██╗
-    ██║        ██║
-    ██║    ██╗ ██║
-    ╚██╗  ██╔╝██╔╝
-     ╚████╔╝██╔═╝
-       ╚══╝ ██║
-            ╚═╝\033[0m
-  \033[38;5;250mClaude Universal\033[0m
-""")
+    # Show compact Q logo
+    print("\033[38;5;39m ◖Q◗\033[0m \033[38;5;250mClaude Universal\033[0m")
 
     # Start proxy
     print(f"Starting proxy on port {port}...")
