@@ -154,6 +154,20 @@ def main(args: Optional[list[str]] = None) -> int:
         print(f"claude-universal {__version__}")
         return 0
 
+    if "--update" in args:
+        print("Updating claude-universal from GitHub...")
+        result = subprocess.run(
+            ["pipx", "upgrade", "claude-universal", "--pip-args=--upgrade"],
+            capture_output=False
+        )
+        if result.returncode == 0:
+            # Also try to reinstall from git if pipx upgrade doesn't find updates
+            result = subprocess.run(
+                ["pipx", "install", "--force", "git+https://github.com/schwarztim/claude-universal.git"],
+                capture_output=False
+            )
+        return result.returncode
+
     if "--help" in args and len(args) == 1:
         print("Claude Universal - Use Claude Code with any AI backend")
         print()
@@ -161,6 +175,7 @@ def main(args: Optional[list[str]] = None) -> int:
         print()
         print("Options:")
         print("  --setup, --reconfigure  Run the setup wizard")
+        print("  --update               Update to latest version from GitHub")
         print("  --version              Show version")
         print("  --help                 Show this help")
         print()

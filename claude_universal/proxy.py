@@ -248,9 +248,10 @@ def get_api_url(endpoint: str, model: str = "") -> str:
 
     # Handle Azure-specific URL format
     if "azure" in base.lower() or "openai.azure.com" in base:
-        # Azure OpenAI format: /openai/deployments/{deployment}/chat/completions
-        deployment = model if model else MIDDLE_MODEL
-        return f"{base}/openai/deployments/{deployment}/chat/completions?api-version={AZURE_API_VERSION}"
+        # Use OpenAI-compatible v1 endpoint format (no api_version needed)
+        if not base.endswith("/v1"):
+            base = f"{base}/openai/v1"
+        return f"{base}/chat/completions"
 
     return f"{base}/{endpoint}"
 
