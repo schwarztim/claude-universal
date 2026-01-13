@@ -1,0 +1,2 @@
+[console_scripts]
+claude-universal = claude_universal.__main__:main
