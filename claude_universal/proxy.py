@@ -242,16 +242,15 @@ async def stream_response(openai_stream: AsyncGenerator, model: str) -> AsyncGen
     yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'})}\n\n"
 
 
-def get_api_url(endpoint: str) -> str:
+def get_api_url(endpoint: str, model: str = "") -> str:
     """Get the full API URL for the configured backend."""
     base = OPENAI_BASE_URL.rstrip("/")
 
     # Handle Azure-specific URL format
     if "azure" in base.lower() or "openai.azure.com" in base:
-        # Azure OpenAI format
-        if "/openai" not in base:
-            return f"{base}/openai/deployments/{map_model('')}/chat/completions?api-version={AZURE_API_VERSION}"
-        return f"{base}/chat/completions?api-version={AZURE_API_VERSION}"
+        # Azure OpenAI format: /openai/deployments/{deployment}/chat/completions
+        deployment = model if model else MIDDLE_MODEL
+        return f"{base}/openai/deployments/{deployment}/chat/completions?api-version={AZURE_API_VERSION}"
 
     return f"{base}/{endpoint}"
 
@@ -289,7 +288,8 @@ async def messages(request: Request):
     original_model = claude_request.get("model", "")
 
     # Make request to backend
-    url = get_api_url("chat/completions")
+    mapped_model = openai_request.get("model", MIDDLE_MODEL)
+    url = get_api_url("chat/completions", mapped_model)
     headers = get_headers()
 
     async with httpx.AsyncClient(timeout=120.0) as client:
