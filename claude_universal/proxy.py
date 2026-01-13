@@ -121,8 +121,10 @@ def build_openai_request(claude_request: dict) -> dict:
         "stream": claude_request.get("stream", False),
     }
 
-    # Handle max_tokens
-    max_tokens = claude_request.get("max_tokens", 4096)
+    # Handle max_tokens - cap at 128K for GPT-5.2
+    max_tokens = claude_request.get("max_tokens", 16384)
+    # Cap at 128000 (GPT-5.2's max output tokens)
+    max_tokens = min(max_tokens, 128000)
     openai_request["max_completion_tokens"] = max_tokens
 
     # Handle temperature
