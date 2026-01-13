@@ -296,6 +296,9 @@ async def messages(request: Request):
     url = get_api_url("chat/completions", mapped_model)
     headers = get_headers()
 
+    # Log the request
+    print(f"[PROXY] {original_model} -> {mapped_model} @ {url}")
+
     if openai_request.get("stream"):
         # Streaming response - create generator that manages its own client
         async def generate_stream():
