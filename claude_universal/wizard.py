@@ -17,47 +17,75 @@ console = Console()
 
 def masked_input(prompt_text: str, default: str = "") -> str:
     """Get password input with asterisk masking."""
+    import sys
+
     console.print(f"{prompt_text}", end="")
     if default:
         console.print(f" [dim]\\[{'*' * min(len(default), 8)}...][/dim]", end="")
     console.print(": ", end="")
 
-    # Try to use raw terminal mode for asterisk feedback (Unix only)
-    try:
-        import sys
-        import tty
-        import termios
+    password = ""
 
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
+    # Windows implementation
+    if sys.platform == "win32":
         try:
-            tty.setraw(fd)
-            password = ""
+            import msvcrt
             while True:
-                ch = sys.stdin.read(1)
+                ch = msvcrt.getwch()
                 if ch in ('\r', '\n'):
-                    console.print()  # New line
+                    print()  # New line
                     break
-                elif ch == '\x7f' or ch == '\x08':  # Backspace
-                    if password:
-                        password = password[:-1]
-                        # Move cursor back, overwrite with space, move back again
-                        sys.stdout.write('\b \b')
-                        sys.stdout.flush()
                 elif ch == '\x03':  # Ctrl+C
                     raise KeyboardInterrupt
+                elif ch in ('\b', '\x7f'):  # Backspace
+                    if password:
+                        password = password[:-1]
+                        sys.stdout.write('\b \b')
+                        sys.stdout.flush()
                 elif ch >= ' ':  # Printable character
                     password += ch
                     sys.stdout.write('*')
                     sys.stdout.flush()
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            return password if password else default
+        except Exception:
+            # Fallback to getpass
+            value = getpass.getpass("")
+            return value if value else default
 
-        return password if password else default
-    except Exception:
-        # Fallback for Windows or non-TTY - use getpass (no visual feedback)
-        value = getpass.getpass("")
-        return value if value else default
+    # Unix implementation
+    else:
+        try:
+            import tty
+            import termios
+
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                while True:
+                    ch = sys.stdin.read(1)
+                    if ch in ('\r', '\n'):
+                        console.print()  # New line
+                        break
+                    elif ch == '\x7f' or ch == '\x08':  # Backspace
+                        if password:
+                            password = password[:-1]
+                            sys.stdout.write('\b \b')
+                            sys.stdout.flush()
+                    elif ch == '\x03':  # Ctrl+C
+                        raise KeyboardInterrupt
+                    elif ch >= ' ':  # Printable character
+                        password += ch
+                        sys.stdout.write('*')
+                        sys.stdout.flush()
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+            return password if password else default
+        except Exception:
+            # Fallback to getpass
+            value = getpass.getpass("")
+            return value if value else default
 
 
 def select_provider() -> str:
