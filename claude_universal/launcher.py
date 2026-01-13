@@ -10,7 +10,59 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import config_exists, load_config
+from .config import config_exists, load_config, get_config_dir
+
+
+def check_for_updates() -> Optional[str]:
+    """Check if updates are available. Returns update message or None. Cached for 24h."""
+    import json
+
+    cache_file = get_config_dir() / ".update_cache"
+    cache_duration = 86400  # 24 hours
+
+    # Check cache
+    if cache_file.exists():
+        try:
+            with open(cache_file) as f:
+                cache = json.load(f)
+                if time.time() - cache.get("timestamp", 0) < cache_duration:
+                    return cache.get("message")
+        except Exception:
+            pass
+
+    # Quick GitHub API check (non-blocking with short timeout)
+    try:
+        import httpx
+        from . import __version__
+
+        # Get latest commit SHA from GitHub
+        response = httpx.get(
+            "https://api.github.com/repos/schwarztim/claude-universal/commits/main",
+            timeout=2.0  # Fast timeout
+        )
+
+        if response.status_code == 200:
+            latest_sha = response.json()["sha"][:7]
+
+            # Compare with current version
+            current_version = __version__
+            message = None
+
+            # If version doesn't contain the latest SHA, update available
+            if latest_sha not in current_version:
+                message = f"\033[38;5;11m● Update available! Run: claude-universal --update\033[0m"
+
+            # Cache result
+            get_config_dir().mkdir(parents=True, exist_ok=True)
+            with open(cache_file, "w") as f:
+                json.dump({"timestamp": time.time(), "message": message}, f)
+
+            return message
+    except Exception:
+        # Silently fail - don't block startup
+        pass
+
+    return None
 
 
 def find_free_port() -> int:
@@ -203,6 +255,12 @@ def main(args: Optional[list[str]] = None) -> int:
     verbose = "--verbose" in args
     if verbose:
         args = [a for a in args if a != "--verbose"]
+
+    # Fast auto-update check (cached for 24h, 2s timeout)
+    update_msg = check_for_updates()
+    if update_msg:
+        print(update_msg)
+        print()
 
     # Check for configuration
     if not config_exists():
