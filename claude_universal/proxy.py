@@ -216,13 +216,16 @@ async def stream_response(openai_stream: AsyncGenerator, model: str) -> AsyncGen
 
             try:
                 data = json.loads(data_str)
-                delta = data.get("choices", [{}])[0].get("delta", {})
+                choices = data.get("choices", [])
 
-                # Handle content delta
-                if "content" in delta and delta["content"]:
-                    text = delta["content"]
-                    current_text += text
-                    yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'text_delta', 'text': text}})}\n\n"
+                if choices:
+                    delta = choices[0].get("delta", {})
+
+                    # Handle content delta
+                    if "content" in delta and delta["content"]:
+                        text = delta["content"]
+                        current_text += text
+                        yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'text_delta', 'text': text}})}\n\n"
 
                 # Handle usage info
                 if "usage" in data:
@@ -293,10 +296,11 @@ async def messages(request: Request):
     url = get_api_url("chat/completions", mapped_model)
     headers = get_headers()
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        if openai_request.get("stream"):
-            # Streaming response
-            async def generate():
+    if openai_request.get("stream"):
+        # Streaming response - create generator that manages its own client
+        async def generate_stream():
+            client = httpx.AsyncClient(timeout=120.0)
+            try:
                 async with client.stream("POST", url, json=openai_request, headers=headers) as response:
                     if response.status_code != 200:
                         error_text = await response.aread()
@@ -304,13 +308,16 @@ async def messages(request: Request):
 
                     async for line in response.aiter_lines():
                         yield line + "\n"
+            finally:
+                await client.aclose()
 
-            return StreamingResponse(
-                stream_response(generate(), original_model),
-                media_type="text/event-stream"
-            )
-        else:
-            # Non-streaming response
+        return StreamingResponse(
+            stream_response(generate_stream(), original_model),
+            media_type="text/event-stream"
+        )
+    else:
+        # Non-streaming response
+        async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(url, json=openai_request, headers=headers)
 
             if response.status_code != 200:
@@ -324,9 +331,13 @@ async def messages(request: Request):
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def catch_all(path: str, request: Request):
-    """Catch-all for unhandled routes - return success for auth endpoints."""
-    # Return success for common auth/validation endpoints
+    """Catch-all for unhandled routes - return success for various endpoints."""
+    # Return success for auth/validation endpoints
     if "auth" in path or "validate" in path or "token" in path:
+        return {"status": "ok"}
+
+    # Return success for telemetry/logging endpoints (we don't need to log)
+    if "event_logging" in path or "telemetry" in path or "analytics" in path:
         return {"status": "ok"}
 
     # Return 404 for unknown endpoints
