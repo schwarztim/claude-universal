@@ -16,8 +16,8 @@ def get_mcp_dir() -> Path:
 
 
 def get_user_mcps_path() -> Path:
-    """Get the path to user-mcps.json."""
-    return Path.home() / ".claude" / "user-mcps.json"
+    """Get the path to mcp.json (Claude's actual MCP config)."""
+    return Path.home() / ".claude" / "mcp.json"
 
 
 def is_mcp_installed(name: str) -> bool:
@@ -27,15 +27,16 @@ def is_mcp_installed(name: str) -> bool:
 
 
 def is_mcp_registered(name: str) -> bool:
-    """Check if an MCP is registered in user-mcps.json."""
-    user_mcps = get_user_mcps_path()
-    if not user_mcps.exists():
+    """Check if an MCP is registered in mcp.json (flat format)."""
+    mcp_config = get_user_mcps_path()
+    if not mcp_config.exists():
         return False
 
     try:
-        with open(user_mcps) as f:
+        with open(mcp_config) as f:
             config = json.load(f)
-            return name in config.get("mcpServers", {})
+            # Flat format - MCPs are direct keys
+            return name in config
     except Exception:
         return False
 
@@ -123,8 +124,9 @@ def install_web_search_mcp(verbose: bool = False) -> bool:
 
 
 def register_web_search_mcp(verbose: bool = False) -> bool:
-    """Register the web-search MCP in user-mcps.json.
+    """Register the web-search MCP in mcp.json.
 
+    Uses FLAT format (no mcpServers wrapper) which Claude Code expects.
     Returns True if registered successfully, False otherwise.
     """
     mcp_path = get_mcp_dir() / "web-search-mcp"
@@ -135,35 +137,31 @@ def register_web_search_mcp(verbose: bool = False) -> bool:
             print("web-search MCP not built, cannot register")
         return False
 
-    user_mcps = get_user_mcps_path()
+    mcp_config = get_user_mcps_path()
 
     try:
         # Ensure .claude directory exists
-        user_mcps.parent.mkdir(parents=True, exist_ok=True)
+        mcp_config.parent.mkdir(parents=True, exist_ok=True)
 
-        # Load existing config or create new
-        if user_mcps.exists():
-            with open(user_mcps) as f:
+        # Load existing config or create new (FLAT format)
+        if mcp_config.exists():
+            with open(mcp_config) as f:
                 config = json.load(f)
         else:
-            config = {"mcpServers": {}}
+            config = {}
 
-        # Ensure mcpServers exists
-        if "mcpServers" not in config:
-            config["mcpServers"] = {}
-
-        # Add web-search MCP
-        config["mcpServers"]["web-search"] = {
+        # Add web-search MCP (FLAT format - no mcpServers wrapper)
+        config["web-search"] = {
             "command": "node",
             "args": [str(index_path)],
         }
 
         # Write back
-        with open(user_mcps, "w") as f:
+        with open(mcp_config, "w") as f:
             json.dump(config, f, indent=2)
 
         if verbose:
-            print(f"Registered web-search MCP in {user_mcps}")
+            print(f"Registered web-search MCP in {mcp_config}")
 
         return True
 
