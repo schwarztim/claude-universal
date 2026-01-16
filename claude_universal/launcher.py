@@ -254,6 +254,14 @@ def main(args: Optional[list[str]] = None) -> int:
                 [sys.executable, "-m", "pip", "install", "--force-reinstall", "git+https://github.com/schwarztim/claude-universal.git"],
                 capture_output=False
             )
+
+        # Update bundled MCPs after successful update
+        if result.returncode == 0:
+            print()
+            print("Updating bundled MCPs...")
+            from .mcp_setup import setup_bundled_mcps
+            setup_bundled_mcps(verbose=True, force=True)
+
         return result.returncode
 
     if "--help" in args and len(args) == 1:
@@ -292,11 +300,22 @@ def main(args: Optional[list[str]] = None) -> int:
         if not run_wizard():
             return 1
 
+        # Install bundled MCPs on first run
+        print("\nSetting up web search capability...")
+        from .mcp_setup import setup_bundled_mcps
+        setup_bundled_mcps(verbose=True)
+
     # Load config and check provider
     config = load_config()
     if not config.provider:
         print("Error: No provider configured. Run 'claude-universal --setup'")
         return 1
+
+    # Ensure bundled MCPs are installed (silent check, installs if missing)
+    from .mcp_setup import is_mcp_installed, setup_bundled_mcps
+    if not is_mcp_installed("web-search-mcp"):
+        print("Installing web search MCP...")
+        setup_bundled_mcps(verbose=False)
 
     # Check for Anthropic passthrough mode
     if config.provider == "anthropic":
