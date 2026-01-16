@@ -562,8 +562,10 @@ async def messages(request: Request):
                     chunk_count = 0
                     async for line in response.aiter_lines():
                         chunk_count += 1
-                        if chunk_count % 100 == 0:
-                            print(f"[PROXY] Received {chunk_count} chunks...")
+                        # Log first 5 chunks and every 100th after
+                        if chunk_count <= 5 or chunk_count % 100 == 0:
+                            preview = line[:80] if len(line) > 80 else line
+                            print(f"[PROXY] Chunk {chunk_count}: {preview}")
                         yield line + "\n"
                     print(f"[PROXY] Stream complete. Total chunks: {chunk_count}")
             except Exception as e:
