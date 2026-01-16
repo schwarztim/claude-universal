@@ -38,7 +38,7 @@ def check_for_updates() -> Optional[str]:
 
         # Get latest commit SHA from GitHub
         response = httpx.get(
-            "https://api.github.com/repos/schwarztim/claude-universal/commits/main",
+            "https://api.github.com/repos/schwarztim/claude-azure/commits/main",
             timeout=2.0  # Fast timeout
         )
 
@@ -51,7 +51,7 @@ def check_for_updates() -> Optional[str]:
 
             # If version doesn't contain the latest SHA, update available
             if latest_sha not in current_version:
-                message = "\033[38;5;11m● Update available! Run: claude-universal --update\033[0m"
+                message = "\033[38;5;11m● Update available! Run: claude-azure --update\033[0m"
 
             # Cache result
             get_config_dir().mkdir(parents=True, exist_ok=True)
@@ -199,7 +199,7 @@ def cleanup_proxy(proc: subprocess.Popen) -> None:
 
 
 def main(args: Optional[list[str]] = None) -> int:
-    """Main entry point for claude-universal."""
+    """Main entry point for claude-azure."""
     if args is None:
         args = sys.argv[1:]
 
@@ -213,7 +213,7 @@ def main(args: Optional[list[str]] = None) -> int:
 
     if "--version" in args:
         from . import __version__
-        print(f"claude-universal {__version__}")
+        print(f"claude-azure {__version__}")
         return 0
 
     if "--update" in args:
@@ -225,7 +225,7 @@ def main(args: Optional[list[str]] = None) -> int:
             try:
                 if proc.info['pid'] != current_pid and proc.info['cmdline']:
                     cmdline = ' '.join(proc.info['cmdline'])
-                    if 'claude-universal' in cmdline and '--update' not in cmdline:
+                    if 'claude-azure' in cmdline and '--update' not in cmdline:
                         running_count += 1
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
@@ -233,25 +233,25 @@ def main(args: Optional[list[str]] = None) -> int:
         if running_count > 0:
             print(
                 f"\033[38;5;9m✗ Error: {running_count} "
-                "claude-universal session(s) still running.\033[0m"
+                "claude-azure session(s) still running.\033[0m"
             )
             print("Please close all sessions before updating.")
             return 1
 
-        print("Updating claude-universal from GitHub...")
+        print("Updating claude-azure from GitHub...")
 
         # Try pipx first, fall back to pip
         import shutil
         if shutil.which("pipx"):
             print("Using pipx...")
             result = subprocess.run(
-                ["pipx", "install", "--force", "git+https://github.com/schwarztim/claude-universal.git"],
+                ["pipx", "install", "--force", "git+https://github.com/schwarztim/claude-azure.git"],
                 capture_output=False
             )
         else:
             print("Using pip...")
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--force-reinstall", "git+https://github.com/schwarztim/claude-universal.git"],
+                [sys.executable, "-m", "pip", "install", "--force-reinstall", "git+https://github.com/schwarztim/claude-azure.git"],
                 capture_output=False
             )
 
@@ -267,7 +267,7 @@ def main(args: Optional[list[str]] = None) -> int:
     if "--help" in args and len(args) == 1:
         print("Claude Universal - Use Claude Code with any AI backend")
         print()
-        print("Usage: claude-universal [options] [claude-args...]")
+        print("Usage: claude-azure [options] [claude-args...]")
         print()
         print("Options:")
         print("  --setup, --reconfigure  Run the setup wizard")
@@ -278,7 +278,7 @@ def main(args: Optional[list[str]] = None) -> int:
         print()
         print("All other arguments are passed to Claude Code.")
         print()
-        print("Configuration: ~/.claude-universal/config.json")
+        print("Configuration: ~/.claude-azure/config.json")
         return 0
 
     # Check for verbose flag
@@ -308,7 +308,7 @@ def main(args: Optional[list[str]] = None) -> int:
     # Load config and check provider
     config = load_config()
     if not config.provider:
-        print("Error: No provider configured. Run 'claude-universal --setup'")
+        print("Error: No provider configured. Run 'claude-azure --setup'")
         return 1
 
     # Ensure bundled MCPs are installed (silent check, installs if missing)

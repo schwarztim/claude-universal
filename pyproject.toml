@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "claude-universal"
+name = "claude-azure"
 version = "0.1.0"
-description = "Use Claude Code with any AI backend - Azure OpenAI, Anthropic, OpenAI, Ollama, and more"
+description = "Use Claude Code with Azure OpenAI - no Anthropic subscription required"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -44,12 +44,12 @@ dev = [
 ]
 
 [project.scripts]
-claude-universal = "claude_universal.__main__:main"
+claude-azure = "claude_universal.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/schwarztim/claude-universal"
-Repository = "https://github.com/schwarztim/claude-universal"
-Issues = "https://github.com/schwarztim/claude-universal/issues"
+Homepage = "https://github.com/schwarztim/claude-azure"
+Repository = "https://github.com/schwarztim/claude-azure"
+Issues = "https://github.com/schwarztim/claude-azure/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -63,7 +63,7 @@ class Config(BaseModel):
 
 def get_config_dir() -> Path:
     """Get the configuration directory path."""
-    return Path.home() / ".claude-universal"
+    return Path.home() / ".claude-azure"
 
 
 def get_config_path() -> Path:

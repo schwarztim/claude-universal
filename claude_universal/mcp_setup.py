@@ -12,7 +12,7 @@ from pathlib import Path
 
 def get_mcp_dir() -> Path:
     """Get the MCP installation directory."""
-    return Path.home() / ".claude-universal" / "mcps"
+    return Path.home() / ".claude-azure" / "mcps"
 
 
 def get_user_mcps_path() -> Path:

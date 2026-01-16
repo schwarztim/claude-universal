@@ -400,11 +400,11 @@ def run_wizard(force: bool = False) -> bool:
 
     # Save configuration
     save_config(config)
-    console.print("\n[green]✓ Configuration saved to ~/.claude-universal/config.json[/green]")
+    console.print("\n[green]✓ Configuration saved to ~/.claude-azure/config.json[/green]")
 
     console.print("\n[bold]Setup complete![/bold]")
     console.print(
-        "Run [cyan]claude-universal[/cyan] to start using Claude Code "
+        "Run [cyan]claude-azure[/cyan] to start using Claude Code "
         "with your backend.\n"
     )
 
