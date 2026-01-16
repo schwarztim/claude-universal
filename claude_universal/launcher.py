@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import config_exists, load_config, get_config_dir
+from .config import config_exists, get_config_dir, load_config
 
 
 def check_for_updates() -> Optional[str]:
@@ -33,6 +33,7 @@ def check_for_updates() -> Optional[str]:
     # Quick GitHub API check (non-blocking with short timeout)
     try:
         import httpx
+
         from . import __version__
 
         # Get latest commit SHA from GitHub
@@ -50,7 +51,7 @@ def check_for_updates() -> Optional[str]:
 
             # If version doesn't contain the latest SHA, update available
             if latest_sha not in current_version:
-                message = f"\033[38;5;11m● Update available! Run: claude-universal --update\033[0m"
+                message = "\033[38;5;11m● Update available! Run: claude-universal --update\033[0m"
 
             # Cache result
             get_config_dir().mkdir(parents=True, exist_ok=True)
@@ -230,7 +231,10 @@ def main(args: Optional[list[str]] = None) -> int:
                 pass
 
         if running_count > 0:
-            print(f"\033[38;5;9m✗ Error: {running_count} claude-universal session(s) still running.\033[0m")
+            print(
+                f"\033[38;5;9m✗ Error: {running_count} "
+                "claude-universal session(s) still running.\033[0m"
+            )
             print("Please close all sessions before updating.")
             return 1
 
@@ -327,7 +331,7 @@ def main(args: Optional[list[str]] = None) -> int:
         cleanup_proxy(proxy_proc)
         return 1
 
-    print(f"Proxy ready. Launching Claude Code...")
+    print("Proxy ready. Launching Claude Code...")
     print()
 
     # Launch Claude Code

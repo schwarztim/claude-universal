@@ -186,6 +186,20 @@ The setup wizard tests your model by making a small request. If it fails:
 - Check your endpoint URL is correct
 - Check the deployment/model name exists in your backend
 
+### Filesystem access not working
+
+If Claude Code can't read/write files through the proxy, ensure you're using the latest version. Earlier versions had incomplete tool result handling. Update with:
+```bash
+claude-universal --update
+```
+
+### Web search limitations
+
+Web search functionality depends on your backend model's capabilities:
+- **Azure OpenAI / OpenAI**: Standard models don't have built-in web search. Consider using models with web search plugins or Bing integration if available.
+- **Anthropic passthrough**: Full web search works as normal.
+- **Custom backends**: Check if your backend supports function calling for web search tools.
+
 ## How the Proxy Works
 
 The proxy translates between Claude's API format and OpenAI's format:

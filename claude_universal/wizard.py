@@ -1,23 +1,20 @@
 """Interactive setup wizard for Claude Universal."""
 
-import sys
 import getpass
-from typing import Optional
+import sys
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from .config import Config, save_config, load_config, config_exists
-
+from .config import Config, config_exists, load_config, save_config
 
 console = Console()
 
 
 def masked_input(prompt_text: str, default: str = "") -> str:
     """Get password input with asterisk masking."""
-    import sys
 
     console.print(f"{prompt_text}", end="")
     if default:
@@ -55,8 +52,8 @@ def masked_input(prompt_text: str, default: str = "") -> str:
     # Unix implementation
     else:
         try:
-            import tty
             import termios
+            import tty
 
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
@@ -403,10 +400,13 @@ def run_wizard(force: bool = False) -> bool:
 
     # Save configuration
     save_config(config)
-    console.print(f"\n[green]✓ Configuration saved to ~/.claude-universal/config.json[/green]")
+    console.print("\n[green]✓ Configuration saved to ~/.claude-universal/config.json[/green]")
 
     console.print("\n[bold]Setup complete![/bold]")
-    console.print("Run [cyan]claude-universal[/cyan] to start using Claude Code with your backend.\n")
+    console.print(
+        "Run [cyan]claude-universal[/cyan] to start using Claude Code "
+        "with your backend.\n"
+    )
 
     return True
 

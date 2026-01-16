@@ -5,15 +5,13 @@ Translates Claude API requests to OpenAI-compatible format.
 
 import json
 import os
-import sys
 import time
-from typing import Any, AsyncGenerator
+from typing import AsyncGenerator
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse, JSONResponse
-
+from fastapi.responses import JSONResponse, StreamingResponse
 
 # Configuration from environment
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -48,45 +46,125 @@ def map_model(claude_model: str) -> str:
 
 
 def convert_messages(claude_messages: list[dict]) -> list[dict]:
-    """Convert Claude message format to OpenAI format."""
+    """Convert Claude message format to OpenAI format.
+
+    Handles:
+    - Text content (simple and multimodal)
+    - Image content (base64)
+    - Tool use blocks (assistant -> tool_calls)
+    - Tool result blocks (user -> tool role messages)
+    """
     openai_messages = []
 
     for msg in claude_messages:
         role = msg.get("role", "user")
         content = msg.get("content", "")
 
-        # Handle different content types
+        # Handle simple string content
         if isinstance(content, str):
             openai_messages.append({"role": role, "content": content})
-        elif isinstance(content, list):
-            # Handle multimodal content
-            parts = []
+            continue
+
+        # Handle list content (multimodal, tool_use, tool_result)
+        if isinstance(content, list):
+            # Separate different block types
+            text_parts = []
+            image_parts = []
+            tool_use_blocks = []
+            tool_result_blocks = []
+
             for block in content:
-                if block.get("type") == "text":
-                    parts.append({"type": "text", "text": block.get("text", "")})
-                elif block.get("type") == "image":
-                    # Handle image content
+                block_type = block.get("type", "")
+
+                if block_type == "text":
+                    text_parts.append({"type": "text", "text": block.get("text", "")})
+
+                elif block_type == "image":
                     source = block.get("source", {})
                     if source.get("type") == "base64":
-                        parts.append({
+                        media_type = source.get("media_type", "image/png")
+                        data = source.get("data", "")
+                        image_parts.append({
                             "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{source.get('media_type', 'image/png')};base64,{source.get('data', '')}"
-                            }
+                            "image_url": {"url": f"data:{media_type};base64,{data}"}
                         })
-                elif block.get("type") == "tool_use":
-                    # Tool use becomes assistant message with tool calls
-                    pass
-                elif block.get("type") == "tool_result":
-                    # Tool result handling
-                    pass
 
-            if parts:
-                openai_messages.append({"role": role, "content": parts})
-            else:
-                # Fallback to string content
-                text_parts = [b.get("text", "") for b in content if b.get("type") == "text"]
-                openai_messages.append({"role": role, "content": " ".join(text_parts)})
+                elif block_type == "tool_use":
+                    tool_use_blocks.append(block)
+
+                elif block_type == "tool_result":
+                    tool_result_blocks.append(block)
+
+            # Handle assistant messages with tool_use blocks
+            if role == "assistant" and tool_use_blocks:
+                # Build tool_calls array for OpenAI format
+                tool_calls = []
+                for tool_block in tool_use_blocks:
+                    tool_calls.append({
+                        "id": tool_block.get("id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": tool_block.get("name", ""),
+                            "arguments": json.dumps(tool_block.get("input", {}))
+                        }
+                    })
+
+                # Include any text content
+                text_content = ""
+                if text_parts:
+                    text_content = " ".join(p.get("text", "") for p in text_parts)
+
+                openai_messages.append({
+                    "role": "assistant",
+                    "content": text_content or None,
+                    "tool_calls": tool_calls
+                })
+
+            # Handle user messages with tool_result blocks
+            elif tool_result_blocks:
+                # Each tool_result becomes a separate "tool" role message in OpenAI
+                for result_block in tool_result_blocks:
+                    tool_call_id = result_block.get("tool_use_id", "")
+                    result_content = result_block.get("content", "")
+
+                    # Handle content that might be a list of blocks
+                    if isinstance(result_content, list):
+                        text_pieces = []
+                        for item in result_content:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                text_pieces.append(item.get("text", ""))
+                            elif isinstance(item, str):
+                                text_pieces.append(item)
+                        result_content = "\n".join(text_pieces)
+                    elif not isinstance(result_content, str):
+                        result_content = json.dumps(result_content)
+
+                    # Check for error in tool result
+                    is_error = result_block.get("is_error", False)
+
+                    openai_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": result_content if not is_error else f"Error: {result_content}"
+                    })
+
+                # Also include any text content from the user message
+                if text_parts:
+                    combined_text = " ".join(p.get("text", "") for p in text_parts)
+                    if combined_text.strip():
+                        openai_messages.append({"role": "user", "content": combined_text})
+
+            # Handle regular content (text and images)
+            elif text_parts or image_parts:
+                combined_parts = text_parts + image_parts
+                if len(combined_parts) == 1 and combined_parts[0].get("type") == "text":
+                    # Single text block - use simple string content
+                    openai_messages.append({
+                        "role": role,
+                        "content": combined_parts[0].get("text", "")
+                    })
+                else:
+                    openai_messages.append({"role": role, "content": combined_parts})
 
     return openai_messages
 
@@ -196,25 +274,45 @@ def convert_response(openai_response: dict, model: str) -> dict:
     }
 
 
-async def stream_response(openai_stream: AsyncGenerator, model: str) -> AsyncGenerator[str, None]:
-    """Convert OpenAI streaming response to Claude SSE format."""
-    import asyncio
+def _sse_event(event_type: str, data: dict) -> str:
+    """Format an SSE event with the given type and data."""
+    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
 
+
+async def stream_response(
+    openai_stream: AsyncGenerator, model: str
+) -> AsyncGenerator[str, None]:
+    """Convert OpenAI streaming response to Claude SSE format.
+
+    Handles both text content and tool calls in the stream.
+    """
     message_id = f"msg_{int(time.time())}"
-    input_tokens = 0
     output_tokens = 0
-    content_blocks = []
-    current_text = ""
-    last_chunk_time = time.time()
+    finish_reason = "end_turn"
+
+    # Track tool calls being built
+    tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments}
+    current_block_index = 0
+    text_block_started = False
+    tool_blocks_started: set[int] = set()
 
     # Send message_start
-    yield f"event: message_start\ndata: {json.dumps({'type': 'message_start', 'message': {'id': message_id, 'type': 'message', 'role': 'assistant', 'content': [], 'model': model, 'stop_reason': None, 'stop_sequence': None, 'usage': {'input_tokens': 0, 'output_tokens': 0}}})}\n\n"
-
-    # Send content_block_start
-    yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': ''}})}\n\n"
+    msg_start = {
+        "type": "message_start",
+        "message": {
+            "id": message_id,
+            "type": "message",
+            "role": "assistant",
+            "content": [],
+            "model": model,
+            "stop_reason": None,
+            "stop_sequence": None,
+            "usage": {"input_tokens": 0, "output_tokens": 0},
+        },
+    }
+    yield _sse_event("message_start", msg_start)
 
     async for chunk in openai_stream:
-        last_chunk_time = time.time()
         if chunk.startswith("data: "):
             data_str = chunk[6:].strip()
             if data_str == "[DONE]":
@@ -225,30 +323,136 @@ async def stream_response(openai_stream: AsyncGenerator, model: str) -> AsyncGen
                 choices = data.get("choices", [])
 
                 if choices:
-                    delta = choices[0].get("delta", {})
+                    choice = choices[0]
+                    delta = choice.get("delta", {})
 
-                    # Handle content delta
+                    # Check finish reason
+                    if choice.get("finish_reason"):
+                        fr = choice["finish_reason"]
+                        if fr == "tool_calls":
+                            finish_reason = "tool_use"
+                        elif fr == "length":
+                            finish_reason = "max_tokens"
+                        else:
+                            finish_reason = "end_turn"
+
+                    # Handle text content delta
                     if "content" in delta and delta["content"]:
+                        # Start text block if not started
+                        if not text_block_started:
+                            block_start = {
+                                "type": "content_block_start",
+                                "index": current_block_index,
+                                "content_block": {"type": "text", "text": ""},
+                            }
+                            yield _sse_event("content_block_start", block_start)
+                            text_block_started = True
+
                         text = delta["content"]
-                        current_text += text
-                        yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'text_delta', 'text': text}})}\n\n"
+                        block_delta = {
+                            "type": "content_block_delta",
+                            "index": current_block_index,
+                            "delta": {"type": "text_delta", "text": text},
+                        }
+                        yield _sse_event("content_block_delta", block_delta)
+
+                    # Handle tool calls delta
+                    if "tool_calls" in delta:
+                        # Close text block if open
+                        if text_block_started:
+                            if current_block_index not in tool_blocks_started:
+                                block_stop = {
+                                    "type": "content_block_stop",
+                                    "index": current_block_index,
+                                }
+                                yield _sse_event("content_block_stop", block_stop)
+                                current_block_index += 1
+                                text_block_started = False
+
+                        for tc in delta["tool_calls"]:
+                            tc_index = tc.get("index", 0)
+                            tool_block_index = current_block_index + tc_index
+
+                            # Initialize tool call if new
+                            if tc_index not in tool_calls:
+                                tool_calls[tc_index] = {
+                                    "id": tc.get("id", ""),
+                                    "name": "",
+                                    "arguments": "",
+                                }
+
+                            # Update tool call data
+                            if tc.get("id"):
+                                tool_calls[tc_index]["id"] = tc["id"]
+                            if tc.get("function", {}).get("name"):
+                                tool_calls[tc_index]["name"] = tc["function"]["name"]
+                            if tc.get("function", {}).get("arguments"):
+                                tool_calls[tc_index]["arguments"] += (
+                                    tc["function"]["arguments"]
+                                )
+
+                            # Send tool_use block start if not sent
+                            tc_data = tool_calls[tc_index]
+                            if tool_block_index not in tool_blocks_started and tc_data["name"]:
+                                tool_start = {
+                                    "type": "content_block_start",
+                                    "index": tool_block_index,
+                                    "content_block": {
+                                        "type": "tool_use",
+                                        "id": tc_data["id"],
+                                        "name": tc_data["name"],
+                                        "input": {},
+                                    },
+                                }
+                                yield _sse_event("content_block_start", tool_start)
+                                tool_blocks_started.add(tool_block_index)
+
+                            # Send arguments as input_json_delta
+                            func_args = tc.get("function", {}).get("arguments")
+                            if func_args and tool_block_index in tool_blocks_started:
+                                arg_delta = {
+                                    "type": "content_block_delta",
+                                    "index": tool_block_index,
+                                    "delta": {
+                                        "type": "input_json_delta",
+                                        "partial_json": func_args,
+                                    },
+                                }
+                                yield _sse_event("content_block_delta", arg_delta)
 
                 # Handle usage info
                 if "usage" in data:
-                    input_tokens = data["usage"].get("prompt_tokens", input_tokens)
-                    output_tokens = data["usage"].get("completion_tokens", output_tokens)
+                    output_tokens = data["usage"].get(
+                        "completion_tokens", output_tokens
+                    )
 
             except json.JSONDecodeError:
                 continue
 
-    # Send content_block_stop
-    yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': 0})}\n\n"
+    # Close any open text block
+    if text_block_started and current_block_index not in tool_blocks_started:
+        yield _sse_event(
+            "content_block_stop",
+            {"type": "content_block_stop", "index": current_block_index},
+        )
+
+    # Close any open tool blocks
+    for tool_block_index in sorted(tool_blocks_started):
+        yield _sse_event(
+            "content_block_stop",
+            {"type": "content_block_stop", "index": tool_block_index},
+        )
 
     # Send message_delta with stop reason
-    yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': output_tokens}})}\n\n"
+    msg_delta = {
+        "type": "message_delta",
+        "delta": {"stop_reason": finish_reason, "stop_sequence": None},
+        "usage": {"output_tokens": output_tokens},
+    }
+    yield _sse_event("message_delta", msg_delta)
 
     # Send message_stop
-    yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'})}\n\n"
+    yield _sse_event("message_stop", {"type": "message_stop"})
 
 
 def get_api_url(endpoint: str, model: str = "") -> str:
@@ -313,14 +517,20 @@ async def messages(request: Request):
             timeout = httpx.Timeout(300.0, connect=10.0)
             client = httpx.AsyncClient(timeout=timeout)
             try:
-                print(f"[PROXY] Sending request to Azure...")
-                async with client.stream("POST", url, json=openai_request, headers=headers) as response:
+                print("[PROXY] Sending request to Azure...")
+                stream_req = client.stream(
+                    "POST", url, json=openai_request, headers=headers
+                )
+                async with stream_req as response:
                     if response.status_code != 200:
                         error_text = await response.aread()
                         print(f"[PROXY] Error response: {response.status_code}")
-                        raise HTTPException(status_code=response.status_code, detail=error_text.decode())
+                        raise HTTPException(
+                            status_code=response.status_code,
+                            detail=error_text.decode(),
+                        )
 
-                    print(f"[PROXY] Receiving stream from Azure...")
+                    print("[PROXY] Receiving stream from Azure...")
                     chunk_count = 0
                     async for line in response.aiter_lines():
                         chunk_count += 1
@@ -343,18 +553,18 @@ async def messages(request: Request):
         # 5 minute timeout for large requests
         timeout = httpx.Timeout(300.0, connect=10.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
-            print(f"[PROXY] Sending non-streaming request to Azure...")
+            print("[PROXY] Sending non-streaming request to Azure...")
             response = await client.post(url, json=openai_request, headers=headers)
 
             if response.status_code != 200:
                 print(f"[PROXY] Error response: {response.status_code}")
                 raise HTTPException(status_code=response.status_code, detail=response.text)
 
-            print(f"[PROXY] Received response, converting format...")
+            print("[PROXY] Received response, converting format...")
             openai_response = response.json()
             claude_response = convert_response(openai_response, original_model)
 
-            print(f"[PROXY] Response complete")
+            print("[PROXY] Response complete")
             return JSONResponse(content=claude_response)
 
 
