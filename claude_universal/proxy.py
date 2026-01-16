@@ -295,6 +295,7 @@ async def stream_response(
     current_block_index = 0
     text_block_started = False
     tool_blocks_started: set[int] = set()
+    chunk_count = 0
 
     # Send message_start
     msg_start = {
@@ -313,6 +314,13 @@ async def stream_response(
     yield _sse_event("message_start", msg_start)
 
     async for chunk in openai_stream:
+        chunk_count += 1
+        chunk = chunk.strip()  # Remove trailing newlines
+
+        # Skip empty lines
+        if not chunk:
+            continue
+
         if chunk.startswith("data: "):
             data_str = chunk[6:].strip()
             if data_str == "[DONE]":
@@ -358,6 +366,7 @@ async def stream_response(
 
                     # Handle tool calls delta
                     if "tool_calls" in delta:
+                        print(f"[PROXY] Tool call delta received: {delta['tool_calls']}")
                         # Close text block if open
                         if text_block_started:
                             if current_block_index not in tool_blocks_started:
@@ -426,8 +435,12 @@ async def stream_response(
                         "completion_tokens", output_tokens
                     )
 
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                print(f"[PROXY] JSON decode error: {e} for chunk: {chunk[:100]}")
                 continue
+
+    print(f"[PROXY] Stream processing complete. Chunks: {chunk_count}, "
+          f"text_started: {text_block_started}, tool_blocks: {len(tool_blocks_started)}")
 
     # Close any open text block
     if text_block_started and current_block_index not in tool_blocks_started:
@@ -443,6 +456,20 @@ async def stream_response(
             {"type": "content_block_stop", "index": tool_block_index},
         )
 
+    # If we never started any blocks, send an empty text block
+    # This can happen if the model returns nothing
+    if not text_block_started and not tool_blocks_started:
+        print("[PROXY] Warning: No content blocks were started, sending empty text block")
+        yield _sse_event(
+            "content_block_start",
+            {"type": "content_block_start", "index": 0,
+             "content_block": {"type": "text", "text": ""}},
+        )
+        yield _sse_event(
+            "content_block_stop",
+            {"type": "content_block_stop", "index": 0},
+        )
+
     # Send message_delta with stop reason
     msg_delta = {
         "type": "message_delta",
@@ -453,6 +480,7 @@ async def stream_response(
 
     # Send message_stop
     yield _sse_event("message_stop", {"type": "message_stop"})
+    print("[PROXY] Stream response complete")
 
 
 def get_api_url(endpoint: str, model: str = "") -> str:
