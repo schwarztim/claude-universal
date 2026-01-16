@@ -330,104 +330,107 @@ async def stream_response(
                 data = json.loads(data_str)
                 choices = data.get("choices", [])
 
-                if choices:
-                    choice = choices[0]
-                    delta = choice.get("delta", {})
+                # Skip chunks with empty choices (Azure prompt filter response)
+                if not choices:
+                    continue
 
-                    # Check finish reason
-                    if choice.get("finish_reason"):
-                        fr = choice["finish_reason"]
-                        if fr == "tool_calls":
-                            finish_reason = "tool_use"
-                        elif fr == "length":
-                            finish_reason = "max_tokens"
-                        else:
-                            finish_reason = "end_turn"
+                choice = choices[0]
+                delta = choice.get("delta", {})
 
-                    # Handle text content delta
-                    if "content" in delta and delta["content"]:
-                        # Start text block if not started
-                        if not text_block_started:
-                            block_start = {
-                                "type": "content_block_start",
-                                "index": current_block_index,
-                                "content_block": {"type": "text", "text": ""},
-                            }
-                            yield _sse_event("content_block_start", block_start)
-                            text_block_started = True
+                # Check finish reason
+                if choice.get("finish_reason"):
+                    fr = choice["finish_reason"]
+                    if fr == "tool_calls":
+                        finish_reason = "tool_use"
+                    elif fr == "length":
+                        finish_reason = "max_tokens"
+                    else:
+                        finish_reason = "end_turn"
 
-                        text = delta["content"]
-                        block_delta = {
-                            "type": "content_block_delta",
+                # Handle text content delta
+                if "content" in delta and delta["content"]:
+                    # Start text block if not started
+                    if not text_block_started:
+                        block_start = {
+                            "type": "content_block_start",
                             "index": current_block_index,
-                            "delta": {"type": "text_delta", "text": text},
+                            "content_block": {"type": "text", "text": ""},
                         }
-                        yield _sse_event("content_block_delta", block_delta)
+                        yield _sse_event("content_block_start", block_start)
+                        text_block_started = True
 
-                    # Handle tool calls delta
-                    if "tool_calls" in delta:
-                        print(f"[PROXY] Tool call delta received: {delta['tool_calls']}")
-                        # Close text block if open
-                        if text_block_started:
-                            if current_block_index not in tool_blocks_started:
-                                block_stop = {
-                                    "type": "content_block_stop",
-                                    "index": current_block_index,
-                                }
-                                yield _sse_event("content_block_stop", block_stop)
-                                current_block_index += 1
-                                text_block_started = False
+                    text = delta["content"]
+                    block_delta = {
+                        "type": "content_block_delta",
+                        "index": current_block_index,
+                        "delta": {"type": "text_delta", "text": text},
+                    }
+                    yield _sse_event("content_block_delta", block_delta)
 
-                        for tc in delta["tool_calls"]:
-                            tc_index = tc.get("index", 0)
-                            tool_block_index = current_block_index + tc_index
+                # Handle tool calls delta
+                if "tool_calls" in delta:
+                    print(f"[PROXY] Tool call delta received: {delta['tool_calls']}")
+                    # Close text block if open
+                    if text_block_started:
+                        if current_block_index not in tool_blocks_started:
+                            block_stop = {
+                                "type": "content_block_stop",
+                                "index": current_block_index,
+                            }
+                            yield _sse_event("content_block_stop", block_stop)
+                            current_block_index += 1
+                            text_block_started = False
 
-                            # Initialize tool call if new
-                            if tc_index not in tool_calls:
-                                tool_calls[tc_index] = {
-                                    "id": tc.get("id", ""),
-                                    "name": "",
-                                    "arguments": "",
-                                }
+                    for tc in delta["tool_calls"]:
+                        tc_index = tc.get("index", 0)
+                        tool_block_index = current_block_index + tc_index
 
-                            # Update tool call data
-                            if tc.get("id"):
-                                tool_calls[tc_index]["id"] = tc["id"]
-                            if tc.get("function", {}).get("name"):
-                                tool_calls[tc_index]["name"] = tc["function"]["name"]
-                            if tc.get("function", {}).get("arguments"):
-                                tool_calls[tc_index]["arguments"] += (
-                                    tc["function"]["arguments"]
-                                )
+                        # Initialize tool call if new
+                        if tc_index not in tool_calls:
+                            tool_calls[tc_index] = {
+                                "id": tc.get("id", ""),
+                                "name": "",
+                                "arguments": "",
+                            }
 
-                            # Send tool_use block start if not sent
-                            tc_data = tool_calls[tc_index]
-                            if tool_block_index not in tool_blocks_started and tc_data["name"]:
-                                tool_start = {
-                                    "type": "content_block_start",
-                                    "index": tool_block_index,
-                                    "content_block": {
-                                        "type": "tool_use",
-                                        "id": tc_data["id"],
-                                        "name": tc_data["name"],
-                                        "input": {},
-                                    },
-                                }
-                                yield _sse_event("content_block_start", tool_start)
-                                tool_blocks_started.add(tool_block_index)
+                        # Update tool call data
+                        if tc.get("id"):
+                            tool_calls[tc_index]["id"] = tc["id"]
+                        if tc.get("function", {}).get("name"):
+                            tool_calls[tc_index]["name"] = tc["function"]["name"]
+                        if tc.get("function", {}).get("arguments"):
+                            tool_calls[tc_index]["arguments"] += (
+                                tc["function"]["arguments"]
+                            )
 
-                            # Send arguments as input_json_delta
-                            func_args = tc.get("function", {}).get("arguments")
-                            if func_args and tool_block_index in tool_blocks_started:
-                                arg_delta = {
-                                    "type": "content_block_delta",
-                                    "index": tool_block_index,
-                                    "delta": {
-                                        "type": "input_json_delta",
-                                        "partial_json": func_args,
-                                    },
-                                }
-                                yield _sse_event("content_block_delta", arg_delta)
+                        # Send tool_use block start if not sent
+                        tc_data = tool_calls[tc_index]
+                        if tool_block_index not in tool_blocks_started and tc_data["name"]:
+                            tool_start = {
+                                "type": "content_block_start",
+                                "index": tool_block_index,
+                                "content_block": {
+                                    "type": "tool_use",
+                                    "id": tc_data["id"],
+                                    "name": tc_data["name"],
+                                    "input": {},
+                                },
+                            }
+                            yield _sse_event("content_block_start", tool_start)
+                            tool_blocks_started.add(tool_block_index)
+
+                        # Send arguments as input_json_delta
+                        func_args = tc.get("function", {}).get("arguments")
+                        if func_args and tool_block_index in tool_blocks_started:
+                            arg_delta = {
+                                "type": "content_block_delta",
+                                "index": tool_block_index,
+                                "delta": {
+                                    "type": "input_json_delta",
+                                    "partial_json": func_args,
+                                },
+                            }
+                            yield _sse_event("content_block_delta", arg_delta)
 
                 # Handle usage info
                 if "usage" in data:
