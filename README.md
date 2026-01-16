@@ -1,16 +1,25 @@
-# Claude Universal
+# Claude Azure
 
-Use Claude Code with any AI backend - Azure OpenAI, OpenAI, Ollama, or any OpenAI-compatible API - **without an Anthropic subscription**.
+<div align="center">
+
+**Use Claude Code with Azure OpenAI - no Anthropic subscription required**
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+</div>
+
+---
 
 ## What This Does
 
-Claude Universal is a launcher that lets you use [Claude Code](https://github.com/anthropics/claude-code) (Anthropic's CLI coding assistant) with alternative AI backends like Azure OpenAI or local models.
+Claude Azure is a launcher that lets you use [Claude Code](https://github.com/anthropics/claude-code) (Anthropic's CLI coding assistant) with **Azure OpenAI** or other OpenAI-compatible backends.
 
 ### How It Works
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                      claude-universal                         │
+│                        claude-azure                           │
 │                                                              │
 │  1. Starts a local proxy server on a random port            │
 │  2. Sets ANTHROPIC_BASE_URL to point to the proxy           │
@@ -23,7 +32,7 @@ Claude Universal is a launcher that lets you use [Claude Code](https://github.co
 │                                                              │
 │  • Receives Claude API requests from Claude Code             │
 │  • Translates them to OpenAI-compatible format               │
-│  • Forwards to your configured backend (Azure, etc.)         │
+│  • Forwards to your Azure OpenAI endpoint                    │
 │  • Translates responses back to Claude format                │
 └──────────────────────────────────────────────────────────────┘
                               │
@@ -33,15 +42,6 @@ Claude Universal is a launcher that lets you use [Claude Code](https://github.co
 │                                                              │
 │  Azure OpenAI  │  OpenAI  │  Ollama  │  Custom API           │
 └──────────────────────────────────────────────────────────────┘
-```
-
-### Important: What to Expect
-
-Claude Code's UI will still show "Claude" branding (model names like "Opus", "Sonnet", "Haiku", the welcome message, etc.) because Claude Code doesn't know it's talking to a different backend. **Under the hood, your requests are routed to your configured provider.**
-
-Use `--verbose` to verify requests are going to your backend:
-```
-[PROXY] claude-sonnet-4-20250514 -> gpt-5.2 @ https://your-azure.openai.azure.com/openai/v1/chat/completions
 ```
 
 ## Installation
@@ -54,59 +54,52 @@ Use `--verbose` to verify requests are going to your backend:
 ### Install via pipx (recommended)
 
 ```bash
-pipx install git+https://github.com/schwarztim/claude-universal.git
+pipx install git+https://github.com/schwarztim/claude-azure.git
 ```
 
 ### Install via pip
 
 ```bash
-pip install git+https://github.com/schwarztim/claude-universal.git
+pip install git+https://github.com/schwarztim/claude-azure.git
 ```
 
-### Install from source
+## Quick Start
 
 ```bash
-git clone https://github.com/schwarztim/claude-universal
-cd claude-universal
-pip install -e .
+# First run - triggers setup wizard
+claude-azure
+
+# You'll be prompted for:
+# - Azure endpoint (e.g., https://your-resource.openai.azure.com)
+# - API key
+# - Deployment name (e.g., gpt-4o, gpt-5.2)
 ```
 
 ## Usage
 
 ```bash
-# First run - triggers setup wizard
-claude-universal
+# Run with your Azure backend
+claude-azure
 
-# Reconfigure provider/credentials
-claude-universal --setup
+# Show proxy logs (diagnose issues)
+claude-azure --verbose
 
-# Show proxy request logs (verify requests go to your backend)
-claude-universal --verbose
+# Reconfigure settings
+claude-azure --setup
 
 # Update to latest version
-claude-universal --update
+claude-azure --update
 
-# Show help
-claude-universal --help
+# Show version
+claude-azure --version
 
 # Pass arguments to Claude Code
-claude-universal -c  # continue last conversation
+claude-azure -c  # continue last conversation
 ```
 
 ## Configuration
 
-### Setup Wizard
-
-On first run, the setup wizard guides you through:
-
-1. **Select provider** - Azure OpenAI, OpenAI, Ollama, or custom
-2. **Enter credentials** - API key and endpoint
-3. **Configure model** - Which model/deployment to use
-4. **Validation** - Tests the connection before saving
-
-### Config File
-
-Config is stored in `~/.claude-universal/config.json`:
+Config is stored in `~/.claude-azure/config.json`:
 
 ```json
 {
@@ -125,15 +118,13 @@ Config is stored in `~/.claude-universal/config.json`:
 
 ### Model Mapping
 
-Claude Code uses three model tiers. You map them to your backend models:
+Claude Code uses three model tiers. You map them to your Azure deployments:
 
-| Claude Code Tier | Description | Example Azure Mapping |
-|------------------|-------------|----------------------|
+| Claude Code Tier | Description | Example Mapping |
+|------------------|-------------|-----------------|
 | Opus | Most capable | gpt-4-turbo, gpt-5.2 |
-| Sonnet | Balanced | gpt-4o, gpt-5.2 |
+| Sonnet | Balanced (default) | gpt-4o, gpt-5.2 |
 | Haiku | Fast | gpt-4o-mini |
-
-By default, the wizard sets all tiers to the same model. You can configure different models during setup or edit the config file.
 
 ## Supported Providers
 
@@ -145,74 +136,33 @@ By default, the wizard sets all tiers to the same model. You can configure diffe
 | **Ollama** | Local models via Ollama |
 | **Custom** | Any OpenAI-compatible API |
 
-## Running Both Claude and Claude Universal
-
-You can use both commands independently:
-
-- `claude` - Uses your claude.ai account (Anthropic)
-- `claude-universal` - Uses your configured backend (Azure, etc.)
-
-They don't conflict with each other.
-
 ## Troubleshooting
+
+### Verify requests go to Azure
+
+Run with `--verbose` to see proxy logs:
+
+```bash
+claude-azure --verbose
+```
+
+You'll see lines like:
+
+```
+[PROXY] claude-sonnet-4-20250514 -> gpt-5.2 @ https://your-azure.openai.azure.com/openai/v1/chat/completions
+```
 
 ### "claude command not found"
 
 Install Claude Code first:
+
 ```bash
 npm install -g @anthropic-ai/claude-code
 ```
 
-### Verify requests go to your backend
-
-Run with `--verbose` to see proxy logs:
-```bash
-claude-universal --verbose
-```
-
-You should see lines like:
-```
-[PROXY] claude-sonnet-4-20250514 -> gpt-5.2 @ https://your-azure.openai.azure.com/...
-```
-
 ### Connection errors
 
-Run `claude-universal --setup` to reconfigure your backend settings.
-
-### Model validation fails
-
-The setup wizard tests your model by making a small request. If it fails:
-- Check your API key is correct
-- Check your endpoint URL is correct
-- Check the deployment/model name exists in your backend
-
-### Filesystem access not working
-
-If Claude Code can't read/write files through the proxy, ensure you're using the latest version. Earlier versions had incomplete tool result handling. Update with:
-```bash
-claude-universal --update
-```
-
-### Web search limitations
-
-Web search functionality depends on your backend model's capabilities:
-- **Azure OpenAI / OpenAI**: Standard models don't have built-in web search. Consider using models with web search plugins or Bing integration if available.
-- **Anthropic passthrough**: Full web search works as normal.
-- **Custom backends**: Check if your backend supports function calling for web search tools.
-
-## How the Proxy Works
-
-The proxy translates between Claude's API format and OpenAI's format:
-
-1. **Request translation**: Converts Claude message format to OpenAI chat completion format
-2. **Model mapping**: Maps `claude-opus-4` → `gpt-5.2` (or your configured model)
-3. **Streaming**: Converts OpenAI SSE streaming to Claude SSE format
-4. **Response translation**: Converts OpenAI responses back to Claude format
-
-The proxy also handles:
-- Tool/function calling translation
-- Image/multimodal content
-- Telemetry endpoints (returns success, doesn't forward)
+Run `claude-azure --setup` to reconfigure your backend settings.
 
 ## License
 
